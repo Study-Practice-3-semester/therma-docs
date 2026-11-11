@@ -1,0 +1,221 @@
+openapi: 3.0.3
+info:
+  title: Evraz Therma API
+  description: REST API для управления симулятором и получения исторических данных воздухонагревателей.
+  version: 1.0.0
+servers:
+  - url: http://localhost:8080/api/v1
+    description: Локальный сервер разработки
+
+paths:
+  /system/status:
+    get:
+      summary: Получить текущий статус экспертной системы
+      tags: [System]
+      responses:
+        '200':
+          description: Текущее состояние ядра
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    enum: [ACTIVE, INSUFFICIENT_DATA]
+                  lastUpdate:
+                    type: string
+                    format: date-time
+  /cowpers:
+    get:
+      summary: Получить список воздухонагревателей
+      tags: [Cowpers]
+      responses:
+        '200':
+          description: Успешный ответ
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Cowper'
+
+  /telemetry:
+    get:
+      summary: Получить историю телеметрии для построения графиков
+      tags: [Telemetry]
+      parameters:
+        - name: cowperId
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: from
+          in: query
+          description: ISO 8601 Timestamp (напр. 2026-11-11T10:00:00Z)
+          required: true
+          schema:
+            type: string
+            format: date-time
+        - name: to
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date-time
+      responses:
+        '200':
+          description: Массив точек телеметрии
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/TelemetryPoint'
+
+  /recommendations:
+    get:
+      summary: Получить историю рекомендаций (алертов)
+      tags: [Recommendations]
+      parameters:
+        - name: cowperId
+          in: query
+          schema:
+            type: string
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [PENDING, APPLIED, REJECTED, EXPIRED]
+      responses:
+        '200':
+          description: Список алертов
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Recommendation'
+
+  /recommendations/{id}/apply:
+    post:
+      summary: Применить рекомендацию (действие оператора)
+      tags: [Recommendations]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                appliedValue:
+                  type: number
+                  description: Фактическое значение, которое выставил оператор
+      responses:
+        '200':
+          description: Успешно применено
+
+  /simulator/start:
+    post:
+      summary: Запустить симуляцию данных
+      tags: [Simulator]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                scenarioId:
+                  type: integer
+      responses:
+        '200':
+          description: Симулятор запущен
+
+  /simulator/stop:
+    post:
+      summary: Остановить генерацию данных
+      tags: [Simulator]
+      responses:
+        '200':
+          description: Симулятор остановлен
+
+components:
+  schemas:
+    Cowper:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        status:
+          type: string
+          enum: [HEATING, BLOWING, ISOLATED, RESERVE, MAINTENANCE]
+    
+    TelemetryPoint:
+      type: object
+      properties:
+        cowperId:
+          type: string
+        recordedAt:
+          type: string
+          format: date-time
+        phase:
+          type: string
+          enum: [HEATING, BLOWING, CHANGING, ISOLATED]
+        hotBlastTemp:
+          type: number
+        domeTemp:
+          type: number
+        flueGasTemp:
+          type: number
+        bfGasFlow:
+          type: number
+        natGasFlow:
+          type: number
+        combustionAirFlow:
+          type: number
+
+    Recommendation:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        cowperId:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        ruleCode:
+          type: string
+        message:
+          type: string
+        priority:
+          type: string
+          enum: [INFO, WARNING, CRITICAL]
+        status:
+          type: string
+          enum: [PENDING, APPLIED, REJECTED, EXPIRED]
+        expectedEffect:
+          type: object
+          properties:
+            tempDelta:
+              type: number
+              description: Ожидаемое изменение температуры
+            gasDelta:
+              type: number
+              description: Ожидаемое изменение расхода газа
+        reasoning:
+          type: array
+          items:
+            type: string
+            description: Описание параметра или правила, вызвавшего алерт
